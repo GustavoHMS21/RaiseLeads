@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Lead, LeadStatus } from "@/types"
-import { mockLeads } from "@/data/mock-leads"
 import { LeadTable } from "@/components/leads/lead-table"
 import { LeadDetailModal } from "@/components/leads/lead-detail-modal"
 import { AddLeadModal } from "@/components/leads/add-lead-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Search, Plus, Download, Filter, Users } from "lucide-react"
+import { Search, Plus, Download, Users, Loader2 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { useClientId } from "@/hooks/use-client-id"
 
 const statusFilters: { value: LeadStatus | "todos"; label: string }[] = [
   { value: "todos", label: "Todos" },
@@ -21,11 +21,40 @@ const statusFilters: { value: LeadStatus | "todos"; label: string }[] = [
 ]
 
 export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>(mockLeads)
+  const clientId = useClientId()
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<LeadStatus | "todos">("todos")
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+
+  const fetchLeads = useCallback(async () => {
+    if (!clientId) return
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      setError(error.message)
+    } else {
+      setLeads((data ?? []) as Lead[])
+    }
+    setLoading(false)
+  }, [clientId])
+
+  useEffect(() => {
+    if (clientId === null) return // still loading
+    if (clientId === "") {
+      setLoading(false)
+      return
+    }
+    fetchLeads()
+  }, [clientId, fetchLeads])
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
@@ -47,13 +76,24 @@ export default function LeadsPage() {
     return counts
   }, [leads])
 
-  const handleStatusChange = (leadId: string, status: LeadStatus) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, status } : l))
-    )
+  const handleStatusChange = async (leadId: string, status: LeadStatus) => {
+    // Optimistic update
+    const previous = leads
+    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status } : l)))
+
+    const supabase = createClient()
+    const { error } = await supabase
+      .from("leads")
+      .update({ status })
+      .eq("id", leadId)
+
+    if (error) {
+      setLeads(previous) // rollback
+      setError("Erro ao atualizar status: " + error.message)
+    }
   }
 
-  const handleAddLead = (newLead: {
+  const handleAddLead = async (newLead: {
     nome: string
     telefone: string
     email: string
@@ -62,15 +102,52 @@ export default function LeadsPage() {
     interesse: string
     valor_estimado: number
   }) => {
-    const lead: Lead = {
-      id: String(leads.length + 1),
-      client_id: "c1",
-      ...newLead,
-      status: "novo",
-      data: new Date().toISOString().split("T")[0],
-      created_at: new Date().toISOString(),
+    if (!clientId) return
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("leads")
+      .insert({
+        client_id: clientId,
+        nome: newLead.nome,
+        telefone: newLead.telefone,
+        email: newLead.email || null,
+        origem: newLead.origem,
+        campanha: newLead.campanha || null,
+        interesse: newLead.interesse || null,
+        valor_estimado: newLead.valor_estimado || null,
+        status: "novo",
+      })
+      .select()
+      .single()
+
+    if (error) {
+      setError("Erro ao criar lead: " + error.message)
+      return
     }
-    setLeads((prev) => [lead, ...prev])
+    if (data) {
+      setLeads((prev) => [data as Lead, ...prev])
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (clientId === "") {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+        <h2 className="font-semibold text-amber-900">Empresa nao cadastrada</h2>
+        <p className="mt-1 text-sm text-amber-800">
+          Voce precisa cadastrar sua empresa antes de gerenciar leads. Va em
+          Configuracoes ou faca logout e crie uma conta nova.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -94,6 +171,12 @@ export default function LeadsPage() {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="flex items-center gap-2 flex-wrap">
