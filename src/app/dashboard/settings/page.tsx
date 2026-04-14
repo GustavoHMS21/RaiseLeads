@@ -1,41 +1,120 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { createClient } from "@/lib/supabase/client"
 import {
   Settings,
-  User,
   Building,
   CreditCard,
-  Bell,
-  Shield,
   Save,
   Check,
+  AlertCircle,
+  Loader2,
 } from "lucide-react"
+import type { PlanType } from "@/types"
+
+type ProfileForm = {
+  nome_empresa: string
+  email: string
+  whatsapp: string
+  segmento: string
+  cidade: string
+  estado: string
+}
+
+const PLAN_DETAILS: Record<PlanType, { price: string; leads: string }> = {
+  starter: { price: "R$97", leads: "50 leads/mes" },
+  growth: { price: "R$197", leads: "150 leads/mes" },
+  scale: { price: "R$297", leads: "Ilimitado" },
+}
 
 export default function SettingsPage() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [profile, setProfile] = useState({
-    nome: "Minha Empresa",
-    email: "contato@minhaempresa.com",
-    whatsapp: "11987654321",
-    segmento: "clinica-estetica",
-    cidade: "Sao Paulo",
-    estado: "SP",
+  const [error, setError] = useState<string | null>(null)
+  const [clientId, setClientId] = useState<string | null>(null)
+  const [plan, setPlan] = useState<PlanType>("starter")
+  const [profile, setProfile] = useState<ProfileForm>({
+    nome_empresa: "",
+    email: "",
+    whatsapp: "",
+    segmento: "",
+    cidade: "",
+    estado: "",
   })
 
-  const handleSave = () => {
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, nome_empresa, email, whatsapp, segmento, cidade, estado, plano")
+        .eq("user_id", user.id)
+        .maybeSingle()
+
+      if (error) {
+        setError(error.message)
+      } else if (data) {
+        setClientId(data.id)
+        setPlan((data.plano as PlanType) ?? "starter")
+        setProfile({
+          nome_empresa: data.nome_empresa ?? "",
+          email: data.email ?? "",
+          whatsapp: data.whatsapp ?? "",
+          segmento: data.segmento ?? "",
+          cidade: data.cidade ?? "",
+          estado: data.estado ?? "",
+        })
+      }
+      setLoading(false)
+    })
+  }, [])
+
+  const handleSave = async () => {
+    if (!clientId) return
+    setSaving(true)
+    setError(null)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from("clients")
+      .update({
+        nome_empresa: profile.nome_empresa,
+        email: profile.email,
+        whatsapp: profile.whatsapp,
+        segmento: profile.segmento,
+        cidade: profile.cidade,
+        estado: profile.estado,
+      })
+      .eq("id", clientId)
+    setSaving(false)
+    if (error) {
+      setError("Erro ao salvar: " + error.message)
+      return
+    }
     setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Settings className="h-6 w-6 text-blue-600" />
@@ -44,7 +123,13 @@ export default function SettingsPage() {
         <p className="text-gray-500">Gerencie seu perfil e preferencias</p>
       </div>
 
-      {/* Profile */}
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -60,8 +145,8 @@ export default function SettingsPage() {
                 Nome da Empresa
               </label>
               <Input
-                value={profile.nome}
-                onChange={(e) => setProfile({ ...profile, nome: e.target.value })}
+                value={profile.nome_empresa}
+                onChange={(e) => setProfile({ ...profile, nome_empresa: e.target.value })}
               />
             </div>
             <div>
@@ -92,7 +177,7 @@ export default function SettingsPage() {
                 onChange={(e) => setProfile({ ...profile, segmento: e.target.value })}
                 options={[
                   { value: "clinica-estetica", label: "Clinica Estetica" },
-                  { value: "dentista-implante", label: "Dentista / Implante" },
+                  { value: "dentista", label: "Dentista / Implante" },
                   { value: "imobiliaria", label: "Imobiliaria" },
                   { value: "academia", label: "Academia / CrossFit" },
                   { value: "energia-solar", label: "Energia Solar" },
@@ -115,19 +200,26 @@ export default function SettingsPage() {
                 Estado
               </label>
               <Input
+                maxLength={2}
                 value={profile.estado}
-                onChange={(e) => setProfile({ ...profile, estado: e.target.value })}
+                onChange={(e) => setProfile({ ...profile, estado: e.target.value.toUpperCase() })}
+                placeholder="SP"
               />
             </div>
           </div>
-          <Button onClick={handleSave} className="gap-2">
-            {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-            {saved ? "Salvo!" : "Salvar Alteracoes"}
+          <Button onClick={handleSave} disabled={saving} className="gap-2">
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : saved ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {saving ? "Salvando..." : saved ? "Salvo!" : "Salvar Alteracoes"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Plan */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -139,68 +231,34 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-4">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-gray-900">Plano Growth</h3>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Plano {plan.charAt(0).toUpperCase() + plan.slice(1)}
+                </h3>
                 <Badge variant="default">Ativo</Badge>
               </div>
-              <p className="text-sm text-gray-500 mt-1">Ate 150 leads/mes</p>
+              <p className="text-sm text-gray-500 mt-1">{PLAN_DETAILS[plan].leads}</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-gray-900">R$1.497</p>
+              <p className="text-2xl font-bold text-gray-900">{PLAN_DETAILS[plan].price}</p>
               <p className="text-sm text-gray-500">/mes</p>
             </div>
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-3">
-            {[
-              { name: "Starter", price: "R$997", leads: "50 leads/mes", current: false },
-              { name: "Growth", price: "R$1.497", leads: "150 leads/mes", current: true },
-              { name: "Scale", price: "R$1.997", leads: "Ilimitado", current: false },
-            ].map((plan) => (
+            {(Object.keys(PLAN_DETAILS) as PlanType[]).map((p) => (
               <div
-                key={plan.name}
+                key={p}
                 className={`rounded-lg border p-4 text-center ${
-                  plan.current ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"
+                  p === plan ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200"
                 }`}
               >
-                <p className="font-semibold text-gray-900">{plan.name}</p>
-                <p className="text-lg font-bold text-gray-900 mt-1">{plan.price}</p>
-                <p className="text-xs text-gray-500">{plan.leads}</p>
-                {plan.current && (
-                  <Badge variant="default" className="mt-2">Atual</Badge>
-                )}
+                <p className="font-semibold text-gray-900 capitalize">{p}</p>
+                <p className="text-lg font-bold text-gray-900 mt-1">{PLAN_DETAILS[p].price}</p>
+                <p className="text-xs text-gray-500">{PLAN_DETAILS[p].leads}</p>
+                {p === plan && <Badge variant="default" className="mt-2">Atual</Badge>}
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-gray-400" />
-            Notificacoes
-          </CardTitle>
-          <CardDescription>Configure como deseja receber alertas</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { label: "Novo lead recebido", desc: "Notificar quando um novo lead entrar", enabled: true },
-            { label: "Relatorio semanal", desc: "Resumo dos leads e campanhas", enabled: true },
-            { label: "CPL acima da meta", desc: "Alertar quando o CPL subir demais", enabled: false },
-            { label: "Lead sem contato 24h", desc: "Lembrar leads nao contactados", enabled: true },
-          ].map((notif) => (
-            <div key={notif.label} className="flex items-center justify-between rounded-lg border border-gray-100 p-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900">{notif.label}</p>
-                <p className="text-xs text-gray-500">{notif.desc}</p>
-              </div>
-              <label className="relative inline-flex cursor-pointer items-center">
-                <input type="checkbox" defaultChecked={notif.enabled} className="peer sr-only" />
-                <div className="h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-blue-600 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all peer-checked:after:translate-x-full" />
-              </label>
-            </div>
-          ))}
         </CardContent>
       </Card>
     </div>

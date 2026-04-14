@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { guiaMetaAds, dicasGerais } from "@/data/guia-trafego"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { createClient } from "@/lib/supabase/client"
+import { useClientId } from "@/hooks/use-client-id"
 import {
   CheckCircle2,
   Circle,
@@ -21,6 +23,7 @@ import {
   ClipboardList,
   ArrowRight,
   Sparkles,
+  Loader2,
 } from "lucide-react"
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -33,8 +36,36 @@ const iconMap: Record<string, React.ReactNode> = {
 }
 
 export default function GuiaPage() {
+  const clientId = useClientId()
   const [steps, setSteps] = useState(guiaMetaAds)
   const [expandedStep, setExpandedStep] = useState<number | null>(1)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!clientId) {
+      if (clientId === "") setLoading(false)
+      return
+    }
+    const supabase = createClient()
+    supabase
+      .from("guia_progress")
+      .select("step_id, completed")
+      .eq("client_id", clientId)
+      .then(({ data }) => {
+        if (data) {
+          const progressMap = new Map(
+            data.map((row) => [row.step_id, row.completed])
+          )
+          setSteps((prev) =>
+            prev.map((s) => ({
+              ...s,
+              completed: progressMap.get(s.id) ?? false,
+            }))
+          )
+        }
+        setLoading(false)
+      })
+  }, [clientId])
 
   const completedCount = steps.filter((s) => s.completed).length
   const progressPercent = (completedCount / steps.length) * 100
@@ -43,9 +74,42 @@ export default function GuiaPage() {
     setExpandedStep(expandedStep === id ? null : id)
   }
 
-  const toggleComplete = (id: number) => {
+  const toggleComplete = async (id: number) => {
+    const current = steps.find((s) => s.id === id)
+    if (!current) return
+    const newValue = !current.completed
+
+    // Optimistic
     setSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, completed: !s.completed } : s))
+      prev.map((s) => (s.id === id ? { ...s, completed: newValue } : s))
+    )
+
+    if (!clientId) return
+
+    const supabase = createClient()
+    const { error } = await supabase.from("guia_progress").upsert(
+      {
+        client_id: clientId,
+        step_id: id,
+        completed: newValue,
+        completed_at: newValue ? new Date().toISOString() : null,
+      },
+      { onConflict: "client_id,step_id" }
+    )
+
+    if (error) {
+      // Rollback
+      setSteps((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, completed: !newValue } : s))
+      )
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
     )
   }
 
