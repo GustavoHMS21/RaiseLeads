@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
-import { mockCampaigns } from "@/data/mock-leads"
+import { useState, useEffect } from "react"
 import { Campaign, CampaignStatus } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { formatCurrency, formatDate, calculateCPL } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
+import { useClientId } from "@/hooks/use-client-id"
 import {
   Megaphone,
   Plus,
@@ -23,6 +24,7 @@ import {
   Play,
   BarChart3,
   X,
+  Loader2,
 } from "lucide-react"
 
 const statusConfig: Record<CampaignStatus, { label: string; variant: "success" | "warning" | "secondary" | "default"; icon: React.ReactNode }> = {
@@ -33,8 +35,12 @@ const statusConfig: Record<CampaignStatus, { label: string; variant: "success" |
 }
 
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(mockCampaigns)
+  const clientId = useClientId()
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newCampaign, setNewCampaign] = useState({
     nome_campanha: "",
     objetivo: "Geracao de Leads",
@@ -43,25 +49,59 @@ export default function CampaignsPage() {
     cpl_meta: 15,
   })
 
+  useEffect(() => {
+    if (!clientId) {
+      if (clientId === "") setLoading(false)
+      return
+    }
+    const supabase = createClient()
+    supabase
+      .from("campaigns")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) setError(error.message)
+        else setCampaigns((data ?? []) as Campaign[])
+        setLoading(false)
+      })
+  }, [clientId])
+
   const totalLeads = campaigns.reduce((sum, c) => sum + c.leads_gerados, 0)
   const totalSpend = campaigns.reduce((sum, c) => sum + c.orcamento_total, 0)
   const avgCPL = totalLeads > 0 ? totalSpend / totalLeads : 0
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    const campaign: Campaign = {
-      id: `camp${campaigns.length + 1}`,
-      client_id: "c1",
-      ...newCampaign,
-      leads_gerados: 0,
-      impressoes: 0,
-      cliques: 0,
-      conversoes: 0,
-      status: "ativa",
-      data_inicio: new Date().toISOString().split("T")[0],
-      created_at: new Date().toISOString(),
+    if (!clientId) return
+    setSubmitting(true)
+    setError(null)
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("campaigns")
+      .insert({
+        client_id: clientId,
+        nome_campanha: newCampaign.nome_campanha,
+        objetivo: newCampaign.objetivo,
+        orcamento_diario: newCampaign.orcamento_diario,
+        orcamento_total: newCampaign.orcamento_total,
+        cpl_meta: newCampaign.cpl_meta,
+        leads_gerados: 0,
+        status: "ativa",
+        data_inicio: new Date().toISOString().split("T")[0],
+      })
+      .select()
+      .single()
+
+    setSubmitting(false)
+    if (error) {
+      setError("Erro ao criar campanha: " + error.message)
+      return
     }
-    setCampaigns((prev) => [...prev, campaign])
+    if (data) {
+      setCampaigns((prev) => [data as Campaign, ...prev])
+    }
     setShowAdd(false)
     setNewCampaign({
       nome_campanha: "",
@@ -70,6 +110,25 @@ export default function CampaignsPage() {
       orcamento_total: 900,
       cpl_meta: 15,
     })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (clientId === "") {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+        <h2 className="font-semibold text-amber-900">Empresa nao cadastrada</h2>
+        <p className="mt-1 text-sm text-amber-800">
+          Voce precisa cadastrar sua empresa antes de gerenciar campanhas.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -90,6 +149,24 @@ export default function CampaignsPage() {
           Nova Campanha
         </Button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {campaigns.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16">
+          <Megaphone className="h-12 w-12 text-gray-300 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900">
+            Nenhuma campanha registrada
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Clique em &quot;Nova Campanha&quot; para registrar sua primeira
+          </p>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -310,8 +387,8 @@ export default function CampaignsPage() {
                 <Button type="button" variant="outline" onClick={() => setShowAdd(false)} className="flex-1">
                   Cancelar
                 </Button>
-                <Button type="submit" className="flex-1">
-                  Criar Campanha
+                <Button type="submit" className="flex-1" disabled={submitting}>
+                  {submitting ? "Criando..." : "Criar Campanha"}
                 </Button>
               </div>
             </form>

@@ -1,7 +1,7 @@
 "use client"
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
-import { mockLeadsByStatus } from "@/data/mock-leads"
+import type { LeadsByStatus } from "@/types"
 
 const statusLabels: Record<string, string> = {
   novo: "Novos",
@@ -11,8 +11,8 @@ const statusLabels: Record<string, string> = {
   perdido: "Perdidos",
 }
 
-export function LeadsStatusChart() {
-  const total = mockLeadsByStatus.reduce((acc, item) => acc + item.count, 0)
+export function LeadsStatusChart({ data }: { data: LeadsByStatus[] }) {
+  const total = data.reduce((acc, item) => acc + item.count, 0)
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -22,40 +22,46 @@ export function LeadsStatusChart() {
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="h-[200px] w-[200px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={mockLeadsByStatus}
-                cx="50%"
-                cy="50%"
-                innerRadius={55}
-                outerRadius={85}
-                paddingAngle={3}
-                dataKey="count"
-              >
-                {mockLeadsByStatus.map((entry, index) => (
-                  <Cell key={index} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value, name) => [
-                  `${value} leads`,
-                  statusLabels[name as string] || name,
-                ]}
-                contentStyle={{
-                  backgroundColor: "#fff",
-                  border: "1px solid #E5E7EB",
-                  borderRadius: "8px",
-                  fontSize: "13px",
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+        <div style={{ width: 200, height: 200, minWidth: 200, minHeight: 200 }}>
+          {total > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={85}
+                  paddingAngle={3}
+                  dataKey="count"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={index} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value, name) => [
+                    `${value} leads`,
+                    statusLabels[name as string] || name,
+                  ]}
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    border: "1px solid #E5E7EB",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center rounded-full border-4 border-gray-100">
+              <span className="text-xs text-gray-400">Sem dados</span>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 space-y-3">
-          {mockLeadsByStatus.map((item) => (
+          {data.map((item) => (
             <div key={item.status} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div
@@ -71,7 +77,7 @@ export function LeadsStatusChart() {
                   {item.count}
                 </span>
                 <span className="text-xs text-gray-400">
-                  ({Math.round((item.count / total) * 100)}%)
+                  ({total > 0 ? Math.round((item.count / total) * 100) : 0}%)
                 </span>
               </div>
             </div>

@@ -9,9 +9,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts"
-import { mockLeadsByDay } from "@/data/mock-leads"
+import type { LeadsByDay } from "@/types"
 
-export function LeadsChart() {
+export function LeadsChart({ data }: { data: LeadsByDay[] }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
@@ -24,9 +24,9 @@ export function LeadsChart() {
           <span className="text-xs font-medium text-gray-600">Leads</span>
         </div>
       </div>
-      <div className="h-[280px]">
+      <div style={{ width: "100%", height: 280, minHeight: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={mockLeadsByDay} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+          <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
             <defs>
               <linearGradient id="leadGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} />
@@ -44,6 +44,7 @@ export function LeadsChart() {
               tick={{ fontSize: 12, fill: "#9CA3AF" }}
               axisLine={false}
               tickLine={false}
+              allowDecimals={false}
             />
             <Tooltip
               contentStyle={{

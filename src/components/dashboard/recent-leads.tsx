@@ -1,10 +1,10 @@
 "use client"
 
-import { mockLeads } from "@/data/mock-leads"
+import type { Lead } from "@/types"
 import { Badge } from "@/components/ui/badge"
 import { Avatar } from "@/components/ui/avatar"
 import { formatPhone, formatDate } from "@/lib/utils"
-import { Phone, Mail, ExternalLink } from "lucide-react"
+import { Phone, Mail, ExternalLink, Users } from "lucide-react"
 
 const statusConfig = {
   novo: { label: "Novo", variant: "default" as const },
@@ -14,8 +14,8 @@ const statusConfig = {
   perdido: { label: "Perdido", variant: "destructive" as const },
 }
 
-export function RecentLeads() {
-  const recentLeads = mockLeads.slice(0, 6)
+export function RecentLeads({ leads }: { leads: Lead[] }) {
+  const recentLeads = leads.slice(0, 6)
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -33,44 +33,54 @@ export function RecentLeads() {
         </a>
       </div>
 
-      <div className="divide-y divide-gray-50">
-        {recentLeads.map((lead) => {
-          const status = statusConfig[lead.status]
-          return (
-            <div
-              key={lead.id}
-              className="flex items-center justify-between px-6 py-4 hover:bg-gray-50/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Avatar name={lead.nome} size="sm" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{lead.nome}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                      <Phone className="h-3 w-3" />
-                      {formatPhone(lead.telefone)}
-                    </span>
-                    {lead.email && (
+      {recentLeads.length === 0 ? (
+        <div className="flex flex-col items-center justify-center px-6 py-10 text-center">
+          <Users className="h-8 w-8 text-gray-300 mb-3" />
+          <p className="text-sm font-medium text-gray-900">Nenhum lead ainda</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Seus leads vao aparecer aqui
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {recentLeads.map((lead) => {
+            const status = statusConfig[lead.status]
+            return (
+              <div
+                key={lead.id}
+                className="flex items-center justify-between px-6 py-4 hover:bg-gray-50/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar name={lead.nome} size="sm" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{lead.nome}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
                       <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <Mail className="h-3 w-3" />
-                        {lead.email}
+                        <Phone className="h-3 w-3" />
+                        {formatPhone(lead.telefone)}
                       </span>
-                    )}
+                      {lead.email && (
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Mail className="h-3 w-3" />
+                          {lead.email}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <div className="text-right hidden sm:block">
-                  <p className="text-xs text-gray-500">{lead.campanha}</p>
-                  <p className="text-xs text-gray-400">{formatDate(lead.data)}</p>
+                <div className="flex items-center gap-3">
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-gray-500">{lead.campanha}</p>
+                    <p className="text-xs text-gray-400">{formatDate(lead.data)}</p>
+                  </div>
+                  <Badge variant={status.variant}>{status.label}</Badge>
                 </div>
-                <Badge variant={status.variant}>{status.label}</Badge>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
