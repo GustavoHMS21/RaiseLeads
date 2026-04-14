@@ -5,20 +5,38 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Zap, Mail, Lock, ArrowRight } from "lucide-react"
+import { Zap, Mail, Lock, ArrowRight, AlertCircle } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const router = useRouter()
   const [form, setForm] = useState({ email: "", password: "" })
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setLoading(true)
-    // Simula login
-    setTimeout(() => {
-      router.push("/dashboard")
-    }, 800)
+
+    const supabase = createClient()
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: form.email,
+      password: form.password,
+    })
+
+    if (signInError) {
+      setError(
+        signInError.message === "Invalid login credentials"
+          ? "Email ou senha incorretos"
+          : signInError.message
+      )
+      setLoading(false)
+      return
+    }
+
+    router.push("/dashboard")
+    router.refresh()
   }
 
   return (
@@ -38,6 +56,13 @@ export default function LoginPage() {
           <p className="mt-2 text-gray-500">
             Acesse sua conta para gerenciar seus leads
           </p>
+
+          {error && (
+            <div className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>

@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { Zap, User, Mail, Lock, Building, Phone, ArrowRight } from "lucide-react"
+import { Zap, User, Mail, Lock, Building, Phone, ArrowRight, AlertCircle } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 export default function RegisterPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     nome: "",
     empresa: "",
@@ -22,10 +24,54 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setLoading(true)
-    setTimeout(() => {
+
+    const supabase = createClient()
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: { nome: form.nome },
+      },
+    })
+
+    if (signUpError) {
+      setError(signUpError.message)
+      setLoading(false)
+      return
+    }
+
+    const userId = data.user?.id
+    if (userId) {
+      const { error: clientError } = await supabase.from("clients").insert({
+        user_id: userId,
+        nome_empresa: form.empresa,
+        segmento: form.segmento,
+        cidade: "",
+        estado: "",
+        whatsapp: form.whatsapp,
+        email: form.email,
+        plano: "starter",
+        status: "trial",
+      })
+
+      if (clientError) {
+        setError("Conta criada, mas erro ao salvar empresa: " + clientError.message)
+        setLoading(false)
+        return
+      }
+    }
+
+    // Se confirmação de email estiver desativada, já tem sessão → dashboard
+    if (data.session) {
       router.push("/dashboard")
-    }, 800)
+      router.refresh()
+    } else {
+      setError("Conta criada! Verifique seu email para confirmar antes de fazer login.")
+      setLoading(false)
+    }
   }
 
   return (
@@ -70,6 +116,13 @@ export default function RegisterPage() {
           <p className="mt-2 text-gray-500">
             Preencha os dados abaixo para comecar
           </p>
+
+          {error && (
+            <div className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
             <div className="grid grid-cols-2 gap-4">
